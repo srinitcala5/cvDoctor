@@ -1,0 +1,94 @@
+name: PR Overseer
+
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install review script dependencies
+        run: pip install anthropic requests
+
+      - name: Get PR diff
+        id: diff
+        run: git diff origin/develop...HEAD > pr_diff.txt
+
+      - name: Fetch Jira ticket description
+        id: jira
+        env:
+          JIRA_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          TICKET=$(echo "${{ github.head_ref }}" | grep -oP 'CVDOC-\d+')
+          curl -s -u srinivas@qbitworks.atlassian.net:$JIRA_TOKEN \
+            "https://qbitworks.atlassian.net/rest/api/3/issue/$TICKET" \
+            -o ticket.json
+
+      - name: Claude PR Review
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python .github/scripts/claude_review.py
+
+      - name: Post review comment to GitHub
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review_output.txt', 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: review
+            });
+
+      - name: Check for merge conflicts with open feature branches
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: 'develop',
+              state: 'open'
+            });
+            const current = context.payload.pull_request.number;
+            const conflicts = [];
+            for (const pr of pulls) {
+              if (pr.number === current) continue;
+              const { data: detail } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+              });
+              if (detail.mergeable === false) {
+                conflicts.push(`#${pr.number} (${pr.head.ref})`);
+              }
+            }
+            if (conflicts.length > 0) {
+              await github.rest.issues.createComment({
+                issue_number: current,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: `⚠️ **Conflict Warning**: This branch may conflict with: ${conflicts.join(', ')}. Resolve before merge.`
+              });
+            }
+
+      - name: Sync Jira on approval
+        if: steps.review.outputs.verdict == 'APPROVED'
+        env:
+          JIRA_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: python .github/scripts/jira_sync.py

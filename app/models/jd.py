@@ -11,3 +11,8 @@ class JdGapAnalysisResponse(BaseModel):
     missing_must_haves: list[KeywordGap]
     missing_nice_to_haves: list[KeywordGap]
     present_keywords: list[str]
+
+
+class JdGapAnalysisRequest(BaseModel):
+    jd_text: str
+    resume_text: str

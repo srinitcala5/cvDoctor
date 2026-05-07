@@ -11,3 +11,9 @@ class LinkedInOptimizeResponse(BaseModel):
     headline: LinkedInSectionResult
     about: LinkedInSectionResult
     experience: LinkedInSectionResult
+
+
+class LinkedInOptimizeRequest(BaseModel):
+    headline: str
+    about: str
+    experience: str

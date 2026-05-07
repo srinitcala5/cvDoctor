@@ -12,3 +12,8 @@ class CoverLetterResponse(BaseModel):
     text: str
     score: CoverLetterScore
     feedback: list[str]
+
+
+class CoverLetterRequest(BaseModel):
+    resume_text: str
+    jd_text: str

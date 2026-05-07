@@ -18,3 +18,9 @@ class PitchFeedbackResponse(BaseModel):
     highlighted_phrases: list[str]
     scores: list[PitchScoreBar]
     suggestions: list[str]
+
+
+class PitchScoreRequest(BaseModel):
+    transcript: str
+    duration_seconds: float
+    wpm: int
